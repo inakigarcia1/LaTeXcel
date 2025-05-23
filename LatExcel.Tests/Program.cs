@@ -93,7 +93,7 @@ internal class Program
         };
 
         // Ejemplo con el primero
-        var modelo = JsonSerializer.Deserialize<Modelo>(json2, opciones);
+       var modelo = JsonSerializer.Deserialize<Modelo>(json, opciones);
 
         if (modelo is null) return;
 

@@ -9,13 +9,12 @@ namespace LatExcel.Api.Controllers;
 public class ConvertidorController : ControllerBase
 {
     [HttpPost("convertir")]
-    [Obsolete]
     public IActionResult Convertir([FromBody] Modelo modelo)
     {
         var bytes = GeneradorDeExcel.GenerarArchivoExcel(modelo);
-        System.IO.File.WriteAllBytes("modelo.xlsx", bytes);
-        string ruta = Path.Combine(Directory.GetCurrentDirectory(), "bin", "Debug", "net8.0");
-        Process.Start("explorer", ruta);
+        //System.IO.File.WriteAllBytes("modelo.xlsx", bytes);
+        //string ruta = Path.Combine(Directory.GetCurrentDirectory(), "bin", "Debug", "net8.0");
+        //Process.Start("explorer", ruta);
         return Ok(modelo);
     }
 }

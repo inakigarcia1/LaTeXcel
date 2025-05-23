@@ -1,11 +1,15 @@
 ﻿using LatExcel.Aplicacion.Modelo;
 using System.Drawing;
+using System.Runtime.InteropServices;
 using OfficeOpenXml;
 using OfficeOpenXml.Style;
 
 namespace LatExcel.Aplicacion;
 public static class GeneradorDeExcel
 {
+    private static readonly List<ExcelRange> CeldasConOperacion = [];
+    private static readonly Color ColorCeldasOpcionales = Color.LightGreen;
+    private static readonly Color ColorCeldasObligatorias = Color.LightSalmon;
     public static byte[] GenerarArchivoExcel(DTOs.Modelo modelo)
     {
         ExcelPackage.License.SetNonCommercialPersonal("Inaki");
@@ -16,85 +20,180 @@ public static class GeneradorDeExcel
 
         var todasLasVariables = ObtenerTodasLasVariables(modelo);
 
-        // -------------------- Encabezado de restricciones --------------------
-        hoja.Cells["A2"].Value = "Restricciones";
-        //hoja.Cells["A1:C1"].Merge = true;
-        //hoja.Cells["D1"].Value = "Relación";
-        //hoja.Cells["E1"].Value = "Lado derecho";
+        AgregarEncabezadosRestricciones(hoja, todasLasVariables);
+        var fila = AgregarRestricciones(modelo, hoja, todasLasVariables);
+        fila += 2; // Espacio
+        fila = CrearFuncionObjetivo(modelo, hoja, fila, todasLasVariables);
+        fila += 1; // Espacio
+        RellenarColumnasVariable(1, fila, hoja, todasLasVariables);
+        fila++;
+        var rangoVariables = RellenarColumnas(1, fila, hoja, todasLasVariables.Count);
+        AgregarOperaciones(rangoVariables);
+        return paquete.GetAsByteArray();
+    }
 
-        hoja.Cells["A2"].Value = "Nombre";
-        int col = 2;
+    private static void AgregarOperaciones((string inicial, string final) rangoVariables)
+    {
+        foreach (var celda in CeldasConOperacion)
+        {
+            celda.Formula += $"{rangoVariables.inicial}:{rangoVariables.final})";
+        }
+    }
+
+    private static void DarEstiloACelda(ExcelRange celda, Color color, bool negrita = false)
+    {
+        PintarCelda(celda, color);
+        PonerBordesACelda(celda);
+        if (negrita)
+            PonerNegritaACelda(celda);
+    }
+
+    private static void PonerNegritaACelda(ExcelRange celda)
+    {
+        celda.Style.Font.Bold = true;
+    }
+
+    private static void PintarCelda(ExcelRange celda, Color color)
+    {
+        celda.Style.Fill.PatternType = ExcelFillStyle.Solid;
+        celda.Style.Fill.BackgroundColor.SetColor(color);
+    }
+
+    private static int CrearFuncionObjetivo(DTOs.Modelo modelo, ExcelWorksheet hoja, int fila, List<string> todasLasVariables)
+    {
+        var objetivo = modelo.Objetivo.TipoObjetivo == TipoObjetivo.Max ? "Max" : "Min";
+        var celda = hoja.Cells[fila, 1];
+        celda.Value = $"Función Objetivo {objetivo} Z";
+
+        fila++;
+
+        var columna = RellenarColumnas(1, fila, hoja, todasLasVariables);
+        DarEstiloACelda(hoja.Cells[fila, columna], ColorCeldasOpcionales);
+
+        hoja.Cells[fila, columna].Value = "Valor Z";
+        DarEstiloACelda(hoja.Cells[fila, columna], ColorCeldasOpcionales, true);
+
+        fila++;
+
+        columna = 1;
+        var primeraCelda = hoja.Cells[fila, columna];
+
         foreach (var variable in todasLasVariables)
         {
-            hoja.Cells[1, col].Value = "Coef. " + variable;
-            hoja.Cells[2, col].Value = "c" + variable;
-            col++;
+            DarEstiloACelda(hoja.Cells[fila, columna], ColorCeldasObligatorias);
+            hoja.Cells[fila, columna++].Value = modelo.Objetivo.Funcion.GetValueOrDefault(variable, 0);
         }
-        hoja.Cells["D2"].Value = "Operación";
-        hoja.Cells["E2"].Value = "Valor";
 
-        // -------------------- Datos de restricciones --------------------
-        int fila = 3;
-        int rIndex = 1;
+        var ultimaCelda = hoja.Cells[fila, columna - 1];
+
+        // TODO: Agregar lo faltante despues de la coma de SUMPRODUCT
+        hoja.Cells[fila, columna].Formula = $"SUMPRODUCT({primeraCelda.Address}:{ultimaCelda.Address}, ";
+        DarEstiloACelda(hoja.Cells[fila, columna], ColorCeldasObligatorias);
+        CeldasConOperacion.Add(hoja.Cells[fila, columna]);
+        fila++;
+
+        return fila;
+    }
+
+    private static int AgregarRestricciones(DTOs.Modelo modelo, ExcelWorksheet hoja, List<string> todasLasVariables)
+    {
+        var fila = 3;
+        var numeroRestriccion = 1;
 
         foreach (var restriccion in modelo.Restricciones)
         {
-            hoja.Cells[fila, 1].Value = "R" + rIndex++;
+            var columna = 1;
+            DarEstiloACelda(hoja.Cells[fila, columna], ColorCeldasOpcionales, true);
+            hoja.Cells[fila, columna++].Value = $"R{numeroRestriccion++}";
 
-            for (int i = 0; i < todasLasVariables.Count; i++)
+            var primeraCelda = hoja.Cells[fila, columna];
+
+            foreach (var variable in todasLasVariables)
             {
-                var variable = todasLasVariables[i];
                 restriccion.LadoIzquierdo.TryGetValue(variable, out double coef);
-                hoja.Cells[fila, i + 2].Value = coef;
+                DarEstiloACelda(hoja.Cells[fila, columna], ColorCeldasObligatorias);
+                hoja.Cells[fila, columna++].Value = coef;
             }
 
-            hoja.Cells[fila, col].Value = TraducirTipoRestriccion(restriccion.TipoRestriccion);
-            hoja.Cells[fila, col + 1].Value = restriccion.LadoDerecho;
+            var ultimaCelda = hoja.Cells[fila, columna - 1];
 
+            // TODO: Agregar lo faltante despues de la coma de SUMPRODUCT
+            DarEstiloACelda(hoja.Cells[fila, columna], ColorCeldasObligatorias);
+            hoja.Cells[fila, columna++].Formula = $"SUMPRODUCT({primeraCelda.Address}:{ultimaCelda.Address}, ";
+            CeldasConOperacion.Add(hoja.Cells[fila, columna - 1]);
+
+            DarEstiloACelda(hoja.Cells[fila, columna], ColorCeldasOpcionales);
+            hoja.Cells[fila, columna].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+            hoja.Cells[fila, columna].Style.VerticalAlignment = ExcelVerticalAlignment.Center;
+            hoja.Cells[fila, columna++].Value = TraducirTipoRestriccion(restriccion.TipoRestriccion);
+            DarEstiloACelda(hoja.Cells[fila, columna], ColorCeldasObligatorias);
+            hoja.Cells[fila, columna].Value = restriccion.LadoDerecho;
             fila++;
         }
 
-        fila++; // Espacio
+        return fila;
+    }
 
-        // -------------------- Función Objetivo --------------------
-        hoja.Cells[fila, 1].Value = "Función Objetivo Z";
-        hoja.Cells[fila, 1, fila, col + 1].Merge = true;
-        hoja.Cells[fila, 1].Style.Font.Bold = true;
-        hoja.Cells[fila, 1].Style.Fill.PatternType = ExcelFillStyle.Solid;
-        hoja.Cells[fila, 1].Style.Fill.BackgroundColor.SetColor(Color.LightGreen);
+    private static void AgregarEncabezadosRestricciones(ExcelWorksheet hoja, List<string> todasLasVariables)
+    {
+        hoja.Cells["A2"].Value = "Restricciones";
+        hoja.Cells["A2"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+        hoja.Cells["A2"].Style.Fill.BackgroundColor.SetColor(ColorCeldasOpcionales);
+        PonerBordesACelda(hoja.Cells["A2"]);
+        PonerNegritaACelda(hoja.Cells["A2"]);
 
-        fila++;
-        for (int i = 0; i < todasLasVariables.Count; i++)
+        var columna = RellenarColumnas(2, 2, hoja, todasLasVariables);
+
+        DarEstiloACelda(hoja.Cells[2, columna], ColorCeldasOpcionales, true);
+        hoja.Cells[2, columna++].Value = "LI";
+
+        DarEstiloACelda(hoja.Cells[2, columna], ColorCeldasOpcionales, true);
+        hoja.Cells[2, columna++].Value = "Relación";
+
+        DarEstiloACelda(hoja.Cells[2, columna], ColorCeldasOpcionales, true);
+        hoja.Cells[2, columna].Value = "LD";
+    }
+
+    private static int RellenarColumnas(int columnaInicial, int fila, ExcelWorksheet hoja, List<string> variables)
+    {
+        var columna = columnaInicial;
+        foreach (var variable in variables)
         {
-            var variable = todasLasVariables[i];
-            hoja.Cells[fila, i + 2].Value = modelo.Objetivo.Funcion.ContainsKey(variable)
-                ? modelo.Objetivo.Funcion[variable]
-                : 0;
+            DarEstiloACelda(hoja.Cells[fila, columna], ColorCeldasOpcionales, true);
+            hoja.Cells[fila, columna++].Value = "c" + variable;
         }
+        return columna;
+    }
 
-        hoja.Cells[fila, 1].Value = "Coeficientes";
-
-        fila++;
-
-        // -------------------- Variables a variar --------------------
-        hoja.Cells[fila, 1].Value = "X";
-        hoja.Cells[fila + 1, 1].Value = "Y";
-
-        fila += 3;
-
-        // -------------------- Ajuste de estilo --------------------
-        hoja.Cells[hoja.Dimension.Address].AutoFitColumns();
-
-        // Opcional: bordes
-        using (var rango = hoja.Cells[1, 1, fila, col + 1])
+    private static void RellenarColumnasVariable(int columnaInicial, int fila, ExcelWorksheet hoja, List<string> variables)
+    {
+        var columna = columnaInicial;
+        foreach (var variable in variables)
         {
-            rango.Style.Border.Top.Style = ExcelBorderStyle.Thin;
-            rango.Style.Border.Left.Style = ExcelBorderStyle.Thin;
-            rango.Style.Border.Right.Style = ExcelBorderStyle.Thin;
-            rango.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+            DarEstiloACelda(hoja.Cells[fila, columna], ColorCeldasOpcionales, true);
+            hoja.Cells[fila, columna++].Value = variable;
         }
+    }
 
-        return paquete.GetAsByteArray();
+    private static (string inicial, string final) RellenarColumnas(int columnaInicial, int fila, ExcelWorksheet hoja, int cantidadColumnas)
+    {
+        var primeraCelda = hoja.Cells[fila, columnaInicial].AddressAbsolute;
+        for (int i = 0; i < cantidadColumnas; i++)
+        {
+            DarEstiloACelda(hoja.Cells[fila, columnaInicial], ColorCeldasObligatorias);
+            hoja.Cells[fila, columnaInicial++].Value = 0;
+        }
+        var ultimaCelda = hoja.Cells[fila, columnaInicial - 1].AddressAbsolute;
+        return (primeraCelda, ultimaCelda);
+    }
+
+    private static void PonerBordesACelda(ExcelRange celda)
+    {
+        var border = celda.Style.Border;
+        border.Top.Style = ExcelBorderStyle.Thin;
+        border.Bottom.Style = ExcelBorderStyle.Thin;
+        border.Left.Style = ExcelBorderStyle.Thin;
+        border.Right.Style = ExcelBorderStyle.Thin;
     }
 
     private static List<string> ObtenerTodasLasVariables(DTOs.Modelo modelo)
