@@ -5,7 +5,7 @@ WORKDIR /src
 # Copiar archivos de solución y restaurar dependencias
 COPY ["LatExcel.sln", "./"]
 COPY ["LatExcel.Api/LatExcel.Api.csproj", "LatExcel.Api/"]
-COPY ["LatExcel.Presentacion/LatExcel.Aplicacion.csproj", "LatExcel.Aplicacion/"]
+COPY ["LatExcel.Presentacion/LatExcel.Aplicacion.csproj", "LatExcel.Presentacion/"]
 RUN dotnet restore "LatExcel.sln"
 
 # Copiar el resto de los archivos y compilar
