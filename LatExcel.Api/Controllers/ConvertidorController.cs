@@ -12,9 +12,6 @@ public class ConvertidorController : ControllerBase
     public IActionResult Convertir([FromBody] Modelo modelo)
     {
         var bytes = GeneradorDeExcel.GenerarArchivoExcel(modelo);
-        //System.IO.File.WriteAllBytes("modelo.xlsx", bytes);
-        //string ruta = Path.Combine(Directory.GetCurrentDirectory(), "bin", "Debug", "net8.0");
-        //Process.Start("explorer", ruta);
-        return Ok(modelo);
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Modelo_Solver.xlsx");
     }
 }
