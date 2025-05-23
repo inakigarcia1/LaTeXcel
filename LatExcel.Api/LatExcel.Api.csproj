@@ -14,7 +14,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\LatExcel.Presentacion\LatExcel.Aplicacion.csproj" />
+    <ProjectReference Include="..\LatExcel.Aplicacion\LatExcel.Aplicacion.csproj" />
   </ItemGroup>
 
 </Project>
